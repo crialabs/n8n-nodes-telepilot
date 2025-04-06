@@ -41,7 +41,11 @@ import {
 	variable_user_ids,
 	variable_username,
 	variable_local_file_path,
-	variable_photo_caption
+	variable_photo_caption,
+	variable_audio_path,
+	variable_audio_caption,
+	variable_file_path,
+	variable_file_caption
 } from './common.descriptions'
 
 const debug = require('debug')('telepilot-node');
@@ -64,7 +68,9 @@ export class TelePilot implements INodeType {
 				required: true,
 			},
 		],
+		// @ts-ignore
 		inputs: ['main'],
+		// @ts-ignore
 		outputs: ['main'],
 		properties: [
 			optionResources,
@@ -92,6 +98,10 @@ export class TelePilot implements INodeType {
 			variable_messageText,
 			variable_local_file_path,
 			variable_photo_caption,
+			variable_audio_path,
+			variable_audio_caption,
+			variable_file_path,
+			variable_file_caption,
 			variable_revoke,
 			variable_username,
 			variable_query,
@@ -153,7 +163,7 @@ export class TelePilot implements INodeType {
 				} else if (message.startsWith("/")) {
 					switch(message) {
 						case "/start":
-							let authState = cM.getAuthStateForCredential(credentials?.apiId as number)
+							let authState = cM.getAuthStateForCredential(credentials?.apiId as number, credentials?.phoneNumber as string)
 							debug("loginWithPhoneNumber./start.authState: " + authState)
 							if (authState == TelepilotAuthState.NO_CONNECTION) {
 								await cM.createClientSetAuthHandlerForPhoneNumberLogin(
@@ -161,7 +171,7 @@ export class TelePilot implements INodeType {
 									credentials?.apiHash as string,
 									credentials?.phoneNumber as string,
 								)
-								authState = cM.getAuthStateForCredential(credentials?.apiId as number)
+								authState = cM.getAuthStateForCredential(credentials?.apiId as number, credentials?.phoneNumber as string)
 								debug("loginWithPhoneNumber./start2.authState: " + authState)
 
 								if (authState == TelepilotAuthState.WAIT_CODE) {
@@ -178,7 +188,7 @@ export class TelePilot implements INodeType {
 										credentials?.phoneNumber as string
 									)
 									await sleep(1000);
-									authState = cM.getAuthStateForCredential(credentials?.apiId as number)
+									authState = cM.getAuthStateForCredential(credentials?.apiId as number, credentials?.phoneNumber as string)
 									if (authState == TelepilotAuthState.WAIT_CODE) {
 										returnData.push("Please provide AuthCode:");
 									} else if (authState == TelepilotAuthState.WAIT_READY) {
@@ -197,11 +207,11 @@ export class TelePilot implements INodeType {
 							}
 							break;
 						case "/stop":
-							cM.closeLocalSession(credentials?.apiId as number)
+							cM.closeLocalSession(credentials?.apiId as number, credentials?.phoneNumber as string)
 							returnData.push("Telegram Account " + credentials?.phoneNumber + " disconnected.");
 							break;
 						case "/clear":
-							cM.deleteLocalInstance(credentials?.apiId as number)
+							cM.deleteLocalInstance(credentials?.apiId as number, credentials?.phoneNumber as string)
 							returnData.push({
 								text: "Telegram Account disconnected, local session has been cleared. Please login again. " +
 											"Please check our guide at https://telepilot.co/login-howto"
@@ -223,7 +233,7 @@ export class TelePilot implements INodeType {
 							break;
 					}
 				} else {
-					let authState = cM.getAuthStateForCredential(credentials?.apiId as number)
+					let authState = cM.getAuthStateForCredential(credentials?.apiId as number, credentials?.phoneNumber as string)
 					debug("loginWithPhoneNumber.authState: " + authState)
 					switch (authState) {
 						case TelepilotAuthState.NO_CONNECTION:
@@ -235,10 +245,11 @@ export class TelePilot implements INodeType {
 							const code = message;
 							await cM.clientLoginSendAuthenticationCode(
 								credentials?.apiId as number,
-								code
+								code,
+								credentials?.phoneNumber as string
 							)
 							await sleep(1000);
-							authState = cM.getAuthStateForCredential(credentials?.apiId as number)
+							authState = cM.getAuthStateForCredential(credentials?.apiId as number, credentials?.phoneNumber as string)
 							if (authState == TelepilotAuthState.WAIT_PASSWORD) {
 								returnData.push("MFA Password:");
 							} else if (authState == TelepilotAuthState.WAIT_READY) {
@@ -251,10 +262,11 @@ export class TelePilot implements INodeType {
 							const password = message;
 							await cM.clientLoginSendAuthenticationPassword(
 								credentials?.apiId as number,
-								password
+								password,
+								credentials?.phoneNumber as string
 							)
 							await sleep(1000);
-							returnData.push("authState:" + cM.getAuthStateForCredential(credentials?.apiId as number));
+							returnData.push("authState:" + cM.getAuthStateForCredential(credentials?.apiId as number, credentials?.phoneNumber as string));
 							break;
 						case TelepilotAuthState.WAIT_READY:
 							returnData.push("You are logged in with phoneNumber " + credentials?.phoneNumber);
@@ -267,13 +279,13 @@ export class TelePilot implements INodeType {
 				}
 			} else if (operation === 'closeSession') {
 				try {
-					cM.closeLocalSession(credentials?.apiId as number)
+					cM.closeLocalSession(credentials?.apiId as number, credentials?.phoneNumber as string)
 				} catch (e) {
 					throw e;
 				}
 				returnData.push("Telegram Account " + credentials?.phoneNumber + " disconnected.");
 			} else if (operation === 'removeTdDatabase') {
-				result = await cM.deleteLocalInstance(credentials?.apiId as number);
+				result = await cM.deleteLocalInstance(credentials?.apiId as number, credentials?.phoneNumber as string);
 				returnData.push({
 					text: "Telegram Account disconnected, local session has been cleared.\nPlease login again. Please check our guide at https://telepilot.co/login-howto\n" +
 						"Or use /help"
@@ -292,7 +304,7 @@ export class TelePilot implements INodeType {
 						"Please use ChatTrigger node together with loginWithPhoneNumber action.\n" +
 						"Please check our guide at https://telepilot.co/login-howto or use /help"
 				});
-				await cM.closeLocalSession(credentials?.apiId as number)
+				await cM.closeLocalSession(credentials?.apiId as number, credentials?.phoneNumber as string)
 				throw new Error("Please login: https://telepilot.co/login-howto") as NodeOperationError
 			} else {
 				client = clientSession.client;
@@ -471,6 +483,58 @@ export class TelePilot implements INodeType {
 						action,
 					});
 					returnData.push(result);
+				} else if (operation === 'sendMessageAudio') {
+					const chat_id = this.getNodeParameter('chat_id', 0) as string;
+					const audioFilePath = this.getNodeParameter('audioFilePath', 0) as string;
+					let audioCaption: string | null = this.getNodeParameter('audioCaption', 0) as string;
+					const reply_to_msg_id = this.getNodeParameter('reply_to_msg_id', 0) as string;
+
+					if (audioCaption === '' && audioCaption.length == 0) {
+						audioCaption = null;
+					}
+					const result = await client.invoke({
+						_: 'sendMessage',
+						chat_id,
+						reply_to_msg_id,
+						input_message_content: {
+							_: 'inputMessageAudio',
+							audio: {
+								_: 'inputFileLocal',
+								path: audioFilePath,
+							},
+							caption: {
+								_: 'formattedText',
+								text: audioCaption,
+							},
+						},
+					});
+					returnData.push(result);
+				} else if (operation === 'sendMessageFile') {
+					const chat_id = this.getNodeParameter('chat_id', 0) as string;
+					const filePath = this.getNodeParameter('filePath', 0) as string;
+					let fileCaption: string | null = this.getNodeParameter('fileCaption', 0) as string;
+					const reply_to_msg_id = this.getNodeParameter('reply_to_msg_id', 0) as string;
+
+					if (fileCaption === '' && fileCaption.length == 0) {
+						fileCaption = null;
+					}
+					const result = await client.invoke({
+						_: 'sendMessage',
+						chat_id,
+						reply_to_msg_id,
+						input_message_content: {
+							_: 'inputMessageDocument',
+							document: {
+								_: 'inputFileLocal',
+								path: filePath,
+							},
+							caption: {
+								_: 'formattedText',
+								text: fileCaption,
+							},
+						},
+					});
+					returnData.push(result);
 				}
 			} else if (resource === 'file') {
 				if (operation === 'getRemoteFile') {
@@ -616,10 +680,10 @@ export class TelePilot implements INodeType {
 			}
 		} catch (e) {
 			if (e.message === "A closed client cannot be reused, create a new Client") {
-				cM.markClientAsClosed(credentials?.apiId as number);
+				cM.markClientAsClosed(credentials?.apiId as number, credentials?.phoneNumber as string);
 				throw new Error("Session was closed or terminated. Please login again: https://telepilot.co/login-howto") as NodeOperationError
 			} else 	if (e.message === "Unauthorized") {
-				cM.markClientAsClosed(credentials?.apiId as number);
+				cM.markClientAsClosed(credentials?.apiId as number, credentials?.phoneNumber as string);
 				throw new Error("Please login: https://telepilot.co/login-howto") as NodeOperationError
 			} else {
 				throw(e as NodeOperationError);

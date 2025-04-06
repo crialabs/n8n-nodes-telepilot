@@ -1,5 +1,5 @@
 /* eslint-disable n8n-nodes-base/node-filename-against-convention */
-import type { INodeProperties } from 'n8n-workflow';
+import type { INodeProperties, NodePropertyTypes } from 'n8n-workflow';
 
 //Resources
 export const optionResources: INodeProperties = {
@@ -307,6 +307,16 @@ export const operationMessage: INodeProperties = {
 			name: 'Get Messages',
 			value: 'getMessage',
 			action: 'Get message',
+		},
+		{
+			name: 'Send Message with Audio',
+			value: 'sendMessageAudio',
+			action: 'Send a message with an audio file',
+		},
+		{
+			name: 'Send Message with File',
+			value: 'sendMessageFile',
+			action: 'Send a message with any file type',
 		},
 		{
 			name: 'Send Message with Photo',
@@ -754,4 +764,63 @@ export const variable_chat_action: INodeProperties = {
 	],
 	default: 'chatActionTyping',
 	description: 'The action description',
+};
+
+// Add new variable definitions for audio and file
+export const variable_audio_path: INodeProperties = {
+	displayName: 'Audio File Path',
+	name: 'audioFilePath',
+	type: 'string' as NodePropertyTypes,
+	default: '',
+	description: 'Path to local audio file',
+	required: true,
+	displayOptions: {
+		show: {
+			operation: ['sendMessageAudio'],
+			resource: ['message'],
+		},
+	},
+};
+
+export const variable_file_path: INodeProperties = {
+	displayName: 'File Path',
+	name: 'filePath',
+	type: 'string' as NodePropertyTypes,
+	default: '',
+	description: 'Path to local file',
+	required: true,
+	displayOptions: {
+		show: {
+			operation: ['sendMessageFile'],
+			resource: ['message'],
+		},
+	},
+};
+
+export const variable_audio_caption: INodeProperties = {
+	displayName: 'Audio Caption',
+	name: 'audioCaption',
+	type: 'string' as NodePropertyTypes,
+	default: '',
+	description: 'Optional caption for the audio file',
+	displayOptions: {
+		show: {
+			operation: ['sendMessageAudio'],
+			resource: ['message'],
+		},
+	},
+};
+
+export const variable_file_caption: INodeProperties = {
+	displayName: 'File Caption',
+	name: 'fileCaption',
+	type: 'string' as NodePropertyTypes,
+	default: '',
+	description: 'Optional caption for the file',
+	displayOptions: {
+		show: {
+			operation: ['sendMessageFile'],
+			resource: ['message'],
+		},
+	},
 };

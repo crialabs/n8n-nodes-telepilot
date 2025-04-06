@@ -1,9 +1,9 @@
 {
-  "name": "@telepilotco/n8n-nodes-telepilot",
-  "version": "0.4.0",
+  "name": "@inite/n8n-nodes-telepilot",
+  "version": "0.5.4",
   "description": "Your personal Telegram CoPilot",
   "keywords": [
-    "telepilot.co",
+    "inite.ai",
     "telepilot",
     "telegram",
     "telegram-api",
@@ -16,14 +16,14 @@
     "deploy/test-n8n-imports"
   ],
   "license": "CC BY-NC-ND",
-  "homepage": "https://telepilot.co/",
+  "homepage": "https://inite.ai/",
   "author": {
     "name": "TelePilot",
-    "email": "contact@telepilot.co"
+    "email": "info@inite.ai"
   },
   "repository": {
     "type": "git",
-    "url": "https://github.com/telepilotco/n8n-nodes-telepilot.git"
+    "url": "https://github.com/inite-ai/n8n-nodes-telepilot.git"
   },
   "main": "index.js",
   "scripts": {

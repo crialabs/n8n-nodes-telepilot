@@ -15,6 +15,38 @@ const nodeVersion = pjson.version;
 const binaryVersion = pjson.dependencies["@telepilotco/tdlib-binaries-prebuilt"].replace("^", "");
 const addonVersion = pjson.dependencies["@telepilotco/tdl"].replace("^", "");
 
+// Global TDLib initialization flag
+let tdlInitialized = false;
+
+// Try to initialize TDLib globally once at module load time
+function initializeTDLib() {
+	if (!tdlInitialized) {
+		try {
+			const libFolder = __dirname + "/../../../../tdlib-binaries-prebuilt/prebuilds/";
+			const libFile = process.platform === 'darwin' ? "libtdjson.dylib" : "libtdjson.so";
+
+			debug("Trying to initialize TDLib globally");
+			tdl.configure({
+				libdir: libFolder,
+				tdjson: libFile
+			});
+			tdlInitialized = true;
+			debug("TDLib initialized successfully");
+		} catch (e) {
+			if (e.message && e.message.includes("already initialized")) {
+				debug("TDLib was already initialized globally");
+				tdlInitialized = true;
+			} else {
+				debug("Error initializing TDLib:", e.message);
+				// Don't throw error here, we'll try again when creating client
+			}
+		}
+	}
+}
+
+// Try to initialize once at load time
+initializeTDLib();
+
 export enum TelepilotAuthState {
 	NO_CONNECTION = "NO_CONNECTION",
 	WAIT_TDLIB_PARAMS = "authorizationStateWaitTdlibParameters",
@@ -58,9 +90,7 @@ export function sleep(ms: number) {
 @Service()
 export class TelePilotNodeConnectionManager {
 
-	private clientSessions: Record<number, ClientSession> = {};
-	private tdlConfigured: boolean = false;
-
+	private clientSessions: Record<string, ClientSession> = {};
 	private TD_DATABASE_PATH_PREFIX = process.env.HOME + "/.n8n/nodes/node_modules/@telepilotco/n8n-nodes-telepilot/db"
 	private TD_FILES_PATH_PREFIX = process.env.HOME + "/.n8n/nodes/node_modules/@telepilotco/n8n-nodes-telepilot/db"
 
@@ -69,28 +99,35 @@ export class TelePilotNodeConnectionManager {
 
 	}
 
-	async closeLocalSession(apiId: number) {
-		debug("closeLocalSession apiId:" + apiId)
+	// Helper method to generate a unique session key from apiId and phoneNumber
+	private getSessionKey(apiId: number, phoneNumber: string): string {
+		return `${apiId}:${phoneNumber}`;
+	}
+
+	async closeLocalSession(apiId: number, phoneNumber: string) {
+		debug("closeLocalSession apiId:" + apiId + ", phoneNumber:" + phoneNumber);
+		const sessionKey = this.getSessionKey(apiId, phoneNumber);
 		let clients_keys = Object.keys(this.clientSessions);
-		if (!clients_keys.includes(apiId.toString()) || this.clientSessions[apiId] === undefined) {
+		if (!clients_keys.includes(sessionKey) || this.clientSessions[sessionKey] === undefined) {
 			throw new Error ("You need to login first, please check our guide at https://telepilot.co/login-howto")
 		}
-		const clientSession = this.clientSessions[apiId];
+		const clientSession = this.clientSessions[sessionKey];
 		// let result = await clientSession.client.invoke({
 		// 	_: 'close'
 		// })
 		clientSession.client.off
 		let result = clientSession.client.close();
-		delete this.clientSessions[apiId];
+		delete this.clientSessions[sessionKey];
 		debug(Object.keys(this.clientSessions))
 		return result;
 	}
-	async deleteLocalInstance(apiId: number): Promise<Record<string, string>> {
+	async deleteLocalInstance(apiId: number, phoneNumber: string): Promise<Record<string, string>> {
+		const sessionKey = this.getSessionKey(apiId, phoneNumber);
 		let clients_keys = Object.keys(this.clientSessions);
-		if (!clients_keys.includes(apiId.toString()) || this.clientSessions[apiId] === undefined) {
+		if (!clients_keys.includes(sessionKey) || this.clientSessions[sessionKey] === undefined) {
 			throw new Error ("You need to login first, please check our guide at https://telepilot.co/login-howto")
 		}
-		const clientSession = this.clientSessions[apiId];
+		const clientSession = this.clientSessions[sessionKey];
 
 		try {
 			await clientSession.client.invoke({
@@ -105,31 +142,34 @@ export class TelePilotNodeConnectionManager {
 			await fs.rm(dirPath, {recursive: true});
 		}
 
-		const db_database_path = this.getTdDatabasePathForClient(apiId);
+		const db_database_path = this.getTdDatabasePathForClient(apiId, phoneNumber);
 		await removeDir(db_database_path)
 		result["db_database"] = `Removed ${db_database_path}`
 
-		const db_files_path = this.getTdFilesPathForClient(apiId);
+		const db_files_path = this.getTdFilesPathForClient(apiId, phoneNumber);
 		await removeDir(db_files_path)
 		result["db_files"] = `Removed ${db_files_path}`
 
-		delete this.clientSessions[apiId];
+		delete this.clientSessions[sessionKey];
 		return result;
 	}
 
-	getTdDatabasePathForClient(apiId: number) {
-		return `${this.TD_DATABASE_PATH_PREFIX}/${apiId}/_td_database`
+	getTdDatabasePathForClient(apiId: number, phoneNumber: string) {
+		const sanitizedPhone = phoneNumber.replace(/[^0-9]/g, '');
+		return `${this.TD_DATABASE_PATH_PREFIX}/${apiId}_${sanitizedPhone}/_td_database`;
 	}
 
-	getTdFilesPathForClient(apiId: number) {
-		return `${this.TD_FILES_PATH_PREFIX}/${apiId}/_td_files`
+	getTdFilesPathForClient(apiId: number, phoneNumber: string) {
+		const sanitizedPhone = phoneNumber.replace(/[^0-9]/g, '');
+		return `${this.TD_FILES_PATH_PREFIX}/${apiId}_${sanitizedPhone}/_td_files`;
 	}
 
 	async clientLoginWithPhoneNumber(apiId: number, apiHash: string, phone_number: string): Promise<string> {
-		debug("clientLoginWithPhoneNumber")
-		let clientSession = this.clientSessions[apiId];
+		debug("clientLoginWithPhoneNumber");
+		const sessionKey = this.getSessionKey(apiId, phone_number);
+		let clientSession = this.clientSessions[sessionKey];
 
-		debug("clientLoginWithPhoneNumber.authState:" + clientSession.authState)
+		debug("clientLoginWithPhoneNumber.authState:" + clientSession.authState);
 		if (clientSession.authState == TelepilotAuthState.WAIT_PHONE_NUMBER) {
 			let result = await clientSession.client.invoke({
 				_: 'setAuthenticationPhoneNumber',
@@ -152,9 +192,10 @@ export class TelePilotNodeConnectionManager {
 
 	}
 
-	async clientLoginSendAuthenticationCode(apiId: number, code: string): Promise<string> {
-		debug("clientLoginSendAuthenticationCode")
-		let clientSession = this.clientSessions[apiId];
+	async clientLoginSendAuthenticationCode(apiId: number, code: string, phoneNumber: string): Promise<string> {
+		debug("clientLoginSendAuthenticationCode");
+		const sessionKey = this.getSessionKey(apiId, phoneNumber);
+		let clientSession = this.clientSessions[sessionKey];
 		let result = await clientSession.client.invoke({
 			_: 'checkAuthenticationCode',
 			code
@@ -162,9 +203,10 @@ export class TelePilotNodeConnectionManager {
 		return result;
 	}
 
-	async clientLoginSendAuthenticationPassword(apiId: number, password: string): Promise<string> {
-		debug("clientLoginSendAuthenticationPassword")
-		let clientSession = this.clientSessions[apiId];
+	async clientLoginSendAuthenticationPassword(apiId: number, password: string, phoneNumber: string): Promise<string> {
+		debug("clientLoginSendAuthenticationPassword");
+		const sessionKey = this.getSessionKey(apiId, phoneNumber);
+		let clientSession = this.clientSessions[sessionKey];
 		let result = await clientSession.client.invoke({
 			_: 'checkAuthenticationPassword',
 			password
@@ -174,55 +216,76 @@ export class TelePilotNodeConnectionManager {
 
 	async createClientSetAuthHandlerForPhoneNumberLogin(apiId: number, apiHash: string, phoneNumber: string): Promise<ClientSession> {
 		let client: typeof Client;
-		if (this.clientSessions[apiId] === undefined) {
-			client = this.initClient(apiId, apiHash);
+		const sessionKey = this.getSessionKey(apiId, phoneNumber);
+		if (this.clientSessions[sessionKey] === undefined) {
+			client = this.initClient(apiId, apiHash, phoneNumber);
 			let clientSession = new ClientSession(client, TelepilotAuthState.NO_CONNECTION, phoneNumber);
-			this.clientSessions[apiId] = clientSession;
+			this.clientSessions[sessionKey] = clientSession;
 		}
 		const authHandler = (update: IDataObject) => {
 			if (update._ === "updateAuthorizationState") {
 				debug('authHandler.Got updateAuthorizationState:', JSON.stringify(update, null, 2))
 				const authorization_state = update.authorization_state as IDataObject;
-				if (this.clientSessions[apiId] !== undefined) {
-					this.clientSessions[apiId].authState = getEnumFromString(TelepilotAuthState, authorization_state._ as string);
-					debug("set clientSession.authState to " + this.clientSessions[apiId].authState)
+				if (this.clientSessions[sessionKey] !== undefined) {
+					this.clientSessions[sessionKey].authState = getEnumFromString(TelepilotAuthState, authorization_state._ as string);
+					debug("set clientSession.authState to " + this.clientSessions[sessionKey].authState)
 				}
 			}
 		}
 
-		this.clientSessions[apiId].client
+		this.clientSessions[sessionKey].client
 			.on('update', authHandler)
 
 		await sleep(1000);
-		return this.clientSessions[apiId];
+		return this.clientSessions[sessionKey];
 	}
 
-	private initClient(apiId: number, apiHash: string) {
+	private initClient(apiId: number, apiHash: string, phoneNumber: string) {
+		const sessionKey = this.getSessionKey(apiId, phoneNumber);
 		let clients_keys = Object.keys(this.clientSessions);
 		let {libFolder, libFile} = this.locateBinaryModules();
 		debug("nodeVersion:", nodeVersion);
 		debug("binaryVersion:", binaryVersion);
 		debug("addonVersion:", addonVersion);
-		if (!clients_keys.includes(apiId.toString()) || this.clientSessions[apiId] === undefined) {
-			if (!this.tdlConfigured) {
-				tdl.configure({
-					libdir: libFolder,
-					tdjson: libFile
-				});
-				this.tdlConfigured = true;
+		if (!clients_keys.includes(sessionKey) || this.clientSessions[sessionKey] === undefined) {
+			// Try to initialize TDLib if not already initialized
+			if (!tdlInitialized) {
+				try {
+					debug("Trying to initialize TDLib from initClient");
+					tdl.configure({
+						libdir: libFolder,
+						tdjson: libFile
+					});
+					tdlInitialized = true;
+					debug("TDLib initialized successfully from initClient");
+				} catch (e) {
+					if (e.message && e.message.includes("already initialized")) {
+						debug("TDLib was already initialized (from initClient)");
+						tdlInitialized = true;
+					} else {
+						debug("Error initializing TDLib from initClient:", e.message);
+						// Don't throw - just continue and try to create the client
+					}
+				}
 			}
-			return tdl.createClient({
-				apiId,
-				apiHash,
-				databaseDirectory: this.getTdDatabasePathForClient(apiId),
-				filesDirectory: this.getTdFilesPathForClient(apiId),
-				nodeVersion,
-				binaryVersion,
-				addonVersion
-				// useTestDc: true
-			});
+
+			try {
+				return tdl.createClient({
+					apiId,
+					apiHash,
+					databaseDirectory: this.getTdDatabasePathForClient(apiId, phoneNumber),
+					filesDirectory: this.getTdFilesPathForClient(apiId, phoneNumber),
+					nodeVersion,
+					binaryVersion,
+					addonVersion
+					// useTestDc: true
+				});
+			} catch (e) {
+				debug("Error creating TDLib client:", e.message);
+				throw e;
+			}
 		} else {
-			return this.clientSessions[apiId].client;
+			return this.clientSessions[sessionKey].client;
 		}
 	}
 
@@ -268,16 +331,19 @@ export class TelePilotNodeConnectionManager {
 		return {libFolder, libFile};
 	}
 
-	markClientAsClosed(apiId: number) {
-		debug("markClientAsClosed apiId:" + apiId)
-		this.closeLocalSession(apiId);
+	markClientAsClosed(apiId: number, phoneNumber: string) {
+		const sessionKey = this.getSessionKey(apiId, phoneNumber);
+		if (this.clientSessions[sessionKey] !== undefined) {
+			delete this.clientSessions[sessionKey];
+		}
 	}
 
-	getAuthStateForCredential(apiId: number) {
-		if (this.clientSessions[apiId] === undefined) {
+	getAuthStateForCredential(apiId: number, phoneNumber: string) {
+		const sessionKey = this.getSessionKey(apiId, phoneNumber);
+		if (this.clientSessions[sessionKey] === undefined) {
 			return TelepilotAuthState.NO_CONNECTION;
 		} else {
-			const clientSession = this.clientSessions[apiId];
+			const clientSession = this.clientSessions[sessionKey];
 			return clientSession.authState;
 		}
 	}
@@ -286,9 +352,9 @@ export class TelePilotNodeConnectionManager {
 		return Object.entries(this.clientSessions).map(([key, value]) => {
 			// Perform some transformation on each ClientSession instance
 			return {
-				apiId: key,
-				authState: value.authState,
-				phoneNumber: value.phoneNumber
+				apiId: key.split(':')[0],
+				phoneNumber: key.split(':')[1],
+				authState: value.authState
 			};
 		});
 	}

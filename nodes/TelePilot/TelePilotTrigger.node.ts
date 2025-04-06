@@ -3,7 +3,7 @@ import { Container } from 'typedi';
 import {
 	IDataObject,
 	INodeType,
-	INodeTypeDescription, ITriggerFunctions, ITriggerResponse,
+	INodeTypeDescription, ITriggerFunctions, ITriggerResponse
 } from 'n8n-workflow';
 
 const debug = require('debug')('telepilot-trigger')
@@ -26,6 +26,7 @@ export class TelePilotTrigger implements INodeType {
 			name: 'TelePilot Trigger',
 		},
 		inputs: [],
+		// @ts-ignore
 		outputs: ['main'],
 		credentials: [
 			{
@@ -65,7 +66,7 @@ export class TelePilotTrigger implements INodeType {
 		);
 		debug("trigger.clientSession.authState: " + clientSession.authState)
 		if (clientSession.authState != TelepilotAuthState.WAIT_READY) {
-			await cM.closeLocalSession(credentials?.apiId as number)
+			await cM.closeLocalSession(credentials?.apiId as number, credentials?.phoneNumber as string)
 			this.emit([this.helpers.returnJsonArray([{a: "Telegram account not logged in. " +
 				"Please use ChatTrigger node together with loginWithPhoneNumber action. " +
 				"Please check our guide at https://telepilot.co/login-howto"}])])
