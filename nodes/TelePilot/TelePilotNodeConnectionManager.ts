@@ -15,37 +15,57 @@ const nodeVersion = pjson.version;
 const binaryVersion = pjson.dependencies["@telepilotco/tdlib-binaries-prebuilt"].replace("^", "");
 const addonVersion = pjson.dependencies["@telepilotco/tdl"].replace("^", "");
 
-// Global TDLib initialization flag
+// Create a safe version of tdl.configure that won't throw errors on repeated calls
+const originalConfigure = tdl.configure;
 let tdlInitialized = false;
 
-// Try to initialize TDLib globally once at module load time
-function initializeTDLib() {
-	if (!tdlInitialized) {
-		try {
-			const libFolder = __dirname + "/../../../../tdlib-binaries-prebuilt/prebuilds/";
-			const libFile = process.platform === 'darwin' ? "libtdjson.dylib" : "libtdjson.so";
+// Override the configure method to make it safe for multiple calls
+tdl.configure = function safeConfigure(options: {libdir: string, tdjson: string}) {
+	if (tdlInitialized) {
+		debug('TDLib already initialized, ignoring configure call');
+		return;
+	}
 
-			debug("Trying to initialize TDLib globally");
-			tdl.configure({
-				libdir: libFolder,
-				tdjson: libFile
-			});
+	try {
+		originalConfigure(options);
+		tdlInitialized = true;
+		debug('TDLib successfully initialized');
+	} catch (e) {
+		if (e.message && e.message.includes('already initialized')) {
+			debug('TDLib was already initialized elsewhere');
 			tdlInitialized = true;
-			debug("TDLib initialized successfully");
-		} catch (e) {
-			if (e.message && e.message.includes("already initialized")) {
-				debug("TDLib was already initialized globally");
-				tdlInitialized = true;
-			} else {
-				debug("Error initializing TDLib:", e.message);
-				// Don't throw error here, we'll try again when creating client
-			}
+		} else {
+			debug('Error during TDLib initialization:', e.message);
+			throw e;
 		}
 	}
-}
+};
 
-// Try to initialize once at load time
-initializeTDLib();
+// Try to initialize TDLib at module load time
+try {
+	const libFolder = __dirname + "/../../../../node_modules/@telepilotco/tdlib-binaries-prebuilt/prebuilds/";
+	let libFile;
+
+	if (process.platform === 'darwin') {
+		libFile = "libtdjson.dylib";
+	} else if (process.platform === 'linux') {
+		libFile = "libtdjson.so";
+	} else if (process.platform === 'win32') {
+		libFile = "tdjson.dll";
+	} else {
+		debug(`Unsupported platform: ${process.platform}`);
+		libFile = "libtdjson.so"; // Default fallback
+	}
+
+	debug(`Attempting to initialize TDLib with libdir: ${libFolder}, file: ${libFile}`);
+	tdl.configure({
+		libdir: libFolder,
+		tdjson: libFile
+	});
+} catch (e) {
+	debug('Initial TDLib initialization attempt failed:', e.message);
+	// Don't throw error here, we'll try a different path when creating clients
+}
 
 export enum TelepilotAuthState {
 	NO_CONNECTION = "NO_CONNECTION",
@@ -244,32 +264,21 @@ export class TelePilotNodeConnectionManager {
 		const sessionKey = this.getSessionKey(apiId, phoneNumber);
 		let clients_keys = Object.keys(this.clientSessions);
 		let {libFolder, libFile} = this.locateBinaryModules();
+
 		debug("nodeVersion:", nodeVersion);
 		debug("binaryVersion:", binaryVersion);
 		debug("addonVersion:", addonVersion);
+
 		if (!clients_keys.includes(sessionKey) || this.clientSessions[sessionKey] === undefined) {
-			// Try to initialize TDLib if not already initialized
-			if (!tdlInitialized) {
-				try {
-					debug("Trying to initialize TDLib from initClient");
-					tdl.configure({
-						libdir: libFolder,
-						tdjson: libFile
-					});
-					tdlInitialized = true;
-					debug("TDLib initialized successfully from initClient");
-				} catch (e) {
-					if (e.message && e.message.includes("already initialized")) {
-						debug("TDLib was already initialized (from initClient)");
-						tdlInitialized = true;
-					} else {
-						debug("Error initializing TDLib from initClient:", e.message);
-						// Don't throw - just continue and try to create the client
-					}
-				}
-			}
+			// Initialize TDLib if not already initialized
+			// This will use our safe version that won't throw if already initialized
+			tdl.configure({
+				libdir: libFolder,
+				tdjson: libFile
+			});
 
 			try {
+				debug(`Creating client for apiId: ${apiId}, phoneNumber: ${phoneNumber}`);
 				return tdl.createClient({
 					apiId,
 					apiHash,
@@ -278,13 +287,13 @@ export class TelePilotNodeConnectionManager {
 					nodeVersion,
 					binaryVersion,
 					addonVersion
-					// useTestDc: true
 				});
 			} catch (e) {
 				debug("Error creating TDLib client:", e.message);
 				throw e;
 			}
 		} else {
+			debug(`Reusing existing client for session ${sessionKey}`);
 			return this.clientSessions[sessionKey].client;
 		}
 	}
