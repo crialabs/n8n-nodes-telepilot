@@ -405,6 +405,8 @@ export const variable_chat_id: INodeProperties = {
 			'getChatHistory',
 			'sendMessage',
 			'sendMessagePhoto',
+			'sendMessageAudio',
+			'sendMessageFile',
 			'deleteMessages',
 			'forwardMessages',
 			'toggleChatIsMarkedAsUnread',
@@ -629,7 +631,7 @@ export const variable_reply_to_msg_id: INodeProperties = {
 	type: 'string',
 	displayOptions: {
 		show: {
-			operation: ['sendMessage', 'sendMessagePhoto'],
+			operation: ['sendMessage', 'sendMessagePhoto', 'sendMessageAudio', 'sendMessageFile'],
 			resource: ['message'],
 		},
 	},
@@ -768,6 +770,33 @@ export const variable_chat_action: INodeProperties = {
 
 // Add new variable definitions for audio and file
 export const variable_audio_path: INodeProperties = {
+	displayName: 'Audio Source',
+	name: 'audioSource',
+	type: 'options' as NodePropertyTypes,
+	default: 'filePath',
+	description: 'Whether to use a local file path or binary data from previous node',
+	required: true,
+	displayOptions: {
+		show: {
+			operation: ['sendMessageAudio'],
+			resource: ['message'],
+		},
+	},
+	options: [
+		{
+			name: 'Local File Path',
+			value: 'filePath',
+			description: 'Use a local file path',
+		},
+		{
+			name: 'Binary Data',
+			value: 'binaryData',
+			description: 'Use binary data from previous node',
+		},
+	],
+};
+
+export const variable_audio_file_path: INodeProperties = {
 	displayName: 'Audio File Path',
 	name: 'audioFilePath',
 	type: 'string' as NodePropertyTypes,
@@ -778,6 +807,23 @@ export const variable_audio_path: INodeProperties = {
 		show: {
 			operation: ['sendMessageAudio'],
 			resource: ['message'],
+			audioSource: ['filePath'],
+		},
+	},
+};
+
+export const variable_audio_binary_property_name: INodeProperties = {
+	displayName: 'Binary Property',
+	name: 'audioBinaryPropertyName',
+	type: 'string' as NodePropertyTypes,
+	default: 'data',
+	description: 'Name of the binary property containing the audio data',
+	required: true,
+	displayOptions: {
+		show: {
+			operation: ['sendMessageAudio'],
+			resource: ['message'],
+			audioSource: ['binaryData'],
 		},
 	},
 };
@@ -803,6 +849,20 @@ export const variable_audio_caption: INodeProperties = {
 	type: 'string' as NodePropertyTypes,
 	default: '',
 	description: 'Optional caption for the audio file',
+	displayOptions: {
+		show: {
+			operation: ['sendMessageAudio'],
+			resource: ['message'],
+		},
+	},
+};
+
+export const variable_send_as_voice: INodeProperties = {
+	displayName: 'Send as Voice Message',
+	name: 'sendAsVoice',
+	type: 'boolean' as NodePropertyTypes,
+	default: false,
+	description: 'Whether to send as a voice message with waveform visualization (true) or as a regular audio file (false)',
 	displayOptions: {
 		show: {
 			operation: ['sendMessageAudio'],
