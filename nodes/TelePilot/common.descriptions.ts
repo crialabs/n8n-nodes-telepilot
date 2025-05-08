@@ -191,6 +191,21 @@ export const operationGroup: INodeProperties = {
 			value: 'getSupergroupFullInfo',
 			action: 'Get supergroup full information',
 		},
+		{
+			name: 'Extract Channel Members',
+			value: 'extractChannelMembers',
+			action: 'Extract channel members',
+		},
+		{
+			name: 'Extract Group Members',
+			value: 'extractGroupMembers',
+			action: 'Extract group members',
+		},
+		{
+			name: 'Force Entry into Channel',
+			value: 'forceEntryChannel',
+			action: 'Force entry into a channel',
+		},
 	],
 default: 'getSupergroup',
 	noDataExpression: true,
