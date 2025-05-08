@@ -206,6 +206,31 @@ export const operationGroup: INodeProperties = {
 			value: 'forceEntryChannel',
 			action: 'Force entry into a channel',
 		},
+		{
+			name: 'Promote Group Member',
+			value: 'promoteGroupMember',
+			action: 'Promote a group member',
+		},
+		{
+			name: 'Demote Group Member',
+			value: 'demoteGroupMember',
+			action: 'Demote a group member',
+		},
+		{
+			name: 'Mute Group Member',
+			value: 'muteGroupMember',
+			action: 'Mute a group member',
+		},
+		{
+			name: 'Unmute Group Member',
+			value: 'unmuteGroupMember',
+			action: 'Unmute a group member',
+		},
+		{
+			name: 'Create Group Poll',
+			value: 'createGroupPoll',
+			action: 'Create a group poll',
+		},
 	],
 default: 'getSupergroup',
 	noDataExpression: true,
@@ -286,6 +311,36 @@ export const operationChat: INodeProperties = {
 			name: 'Send Chat Action',
 			value: 'sendChatAction',
 			action: 'Sends a chat action',
+		},
+		{
+			name: 'Send Location Message',
+			value: 'sendLocationMessage',
+			action: 'Send a location message',
+		},
+		{
+			name: 'Send Contact Information',
+			value: 'sendContactInformation',
+			action: 'Send contact information',
+		},
+		{
+			name: 'Create Custom Keyboard Buttons',
+			value: 'createCustomKeyboardButtons',
+			action: 'Create custom keyboard buttons',
+		},
+		{
+			name: 'Send Video Message with Caption',
+			value: 'sendVideoMessageWithCaption',
+			action: 'Send a video message with caption',
+		},
+		{
+			name: 'Send Sticker',
+			value: 'sendSticker',
+			action: 'Send a sticker',
+		},
+		{
+			name: 'Send Gif',
+			value: 'sendGif',
+			action: 'Send a gif',
 		},
 	],
 default: 'getChatHistory',

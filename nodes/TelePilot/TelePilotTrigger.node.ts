@@ -1135,6 +1135,388 @@ export class TelePilot implements INodeType {
 						},
 					});
 					returnData.push(result);
+				} else if (operation === 'editMessageText') {
+					const chat_id = this.getNodeParameter('chat_id', 0) as string;
+					const message_id = this.getNodeParameter('message_id', 0) as string;
+					const messageText = this.getNodeParameter('messageText', 0) as string;
+					const result = await client.invoke({
+						_: 'editMessageText',
+						chat_id,
+						message_id,
+						input_message_content: {
+							_: 'inputMessageText',
+							text: {
+								_: 'formattedText',
+								text: messageText,
+							},
+						},
+					});
+					returnData.push(result);
+				} else if (operation === 'deleteMessages') {
+					const chat_id = this.getNodeParameter('chat_id', 0) as string;
+					const message_ids = this.getNodeParameter('message_ids', 0) as string;
+					const revoke = this.getNodeParameter('revoke', 0) as boolean;
+
+					const idsArray = message_ids
+						.toString()
+						.split(',')
+						.map((s) => s.toString().trim());
+					const result = await client.invoke({
+						_: 'deleteMessages',
+						chat_id,
+						message_ids: idsArray,
+						revoke,
+					});
+					returnData.push(result);
+				} else if (operation === 'forwardMessages') {
+					const chat_id = this.getNodeParameter('chat_id', 0) as string;
+					const from_chat_id = this.getNodeParameter('from_chat_id', 0) as string;
+
+					const message_ids: string = this.getNodeParameter('message_ids', 0) as string;
+					debug(message_ids);
+					const idsArray = message_ids
+						.toString()
+						.split(',')
+						.map((s) => s.toString().trim())
+						.filter((s) => s.length > 0);
+					debug(idsArray);
+
+					const result = await client.invoke({
+						_: 'forwardMessages',
+						chat_id,
+						from_chat_id,
+						message_ids: idsArray,
+					});
+					returnData.push(result);
+				}
+			} else if (resource === 'file') {
+				if (operation === 'getRemoteFile') {
+					const remote_file_id = this.getNodeParameter('remote_file_id', 0) as string;
+					const result = await client.invoke({
+						_: 'getRemoteFile',
+						remote_file_id,
+					});
+					returnData.push(result);
+				} else if (operation === 'downloadFile') {
+					const file_id = this.getNodeParameter('file_id', 0) as string;
+					const result = await client.invoke({
+						_: 'downloadFile',
+						file_id,
+						priority: 16,
+						synchronous: true,
+					});
+					returnData.push(result);
+				}
+			} else if (resource === 'message') {
+				if (operation === 'getMessage') {
+					const chat_id = this.getNodeParameter('chat_id', 0) as string;
+					const message_id = this.getNodeParameter('message_id', 0) as string;
+					const result = await client.invoke({
+						_: 'getMessage',
+						chat_id,
+						message_id,
+					});
+					returnData.push(result);
+				} else if (operation === 'sendMessage') {
+					const chat_id = this.getNodeParameter('chat_id', 0) as string;
+					const messageText = this.getNodeParameter('messageText', 0) as string;
+					const reply_to_msg_id = this.getNodeParameter('reply_to_msg_id', 0) as string;
+					const result = await client.invoke({
+						_: 'sendMessage',
+						chat_id,
+						reply_to_msg_id,
+						input_message_content: {
+							_: 'inputMessageText',
+							text: {
+								_: 'formattedText',
+								text: messageText,
+							},
+						},
+					});
+					returnData.push(result);
+				} else if (operation === 'sendMessageAudio') {
+					// Creating a specific output object that will always be returned
+					const outputItem: IDataObject = {
+						operation: 'sendMessageAudio',
+						success: false,
+						error: null,
+						result: null,
+					};
+
+					try {
+						// Extract parameters
+						const chat_id = this.getNodeParameter('chat_id', 0) as string;
+						outputItem.chat_id = chat_id;
+
+						// Get audio path based on source
+						const audioSource = this.getNodeParameter('audioSource', 0) as string;
+						outputItem.audioSource = audioSource;
+
+						// Check if sending as voice message
+						const sendAsVoice = this.getNodeParameter('sendAsVoice', 0, false) as boolean;
+						outputItem.sendAsVoice = sendAsVoice;
+
+						let audioFilePath = '';
+						let processError = false;
+
+						// Handle binary data source
+						if (audioSource === 'binaryData') {
+							try {
+								const binaryPropertyName = this.getNodeParameter('audioBinaryPropertyName', 0) as string;
+								outputItem.binaryPropertyName = binaryPropertyName;
+
+								// Get binary data with better error messages
+								const inputData = this.getInputData();
+								if (!inputData || !inputData[0]) {
+									outputItem.error = 'No input data available';
+									processError = true;
+								} else {
+									const binaryData = inputData[0].binary;
+									if (!binaryData) {
+										outputItem.error = 'No binary data exists on input item';
+										processError = true;
+									} else {
+										const binaryProperty = binaryData[binaryPropertyName];
+										if (!binaryProperty) {
+											outputItem.error = `Binary property "${binaryPropertyName}" not found`;
+											processError = true;
+										} else if (!binaryProperty.filepath) {
+											outputItem.error = `Binary property "${binaryPropertyName}" does not contain a filepath`;
+											processError = true;
+										} else {
+											audioFilePath = binaryProperty.filepath as string;
+											outputItem.audioFilePath = audioFilePath;
+										}
+									}
+								}
+							} catch (binaryError) {
+								outputItem.error = `Binary data error: ${binaryError.message}`;
+								processError = true;
+							}
+						} else if (audioSource === 'filePath') {
+							try {
+								audioFilePath = this.getNodeParameter('audioFilePath', 0) as string;
+								if (!audioFilePath) {
+									outputItem.error = 'File path is empty';
+									processError = true;
+								} else {
+									outputItem.audioFilePath = audioFilePath;
+								}
+							} catch (pathError) {
+								outputItem.error = `File path error: ${pathError.message}`;
+								processError = true;
+							}
+						} else {
+							outputItem.error = `Invalid audio source: ${audioSource}`;
+							processError = true;
+						}
+
+						// Parse additional parameters if no errors so far
+						if (!processError) {
+							let audioCaption = null;
+							try {
+								const captionValue = this.getNodeParameter('audioCaption', 0, '') as string;
+								audioCaption = captionValue && captionValue.length > 0 ? captionValue : null;
+								outputItem.audioCaption = audioCaption;
+							} catch (error) {
+								// Caption is optional, ignore errors
+							}
+
+							let reply_to_msg_id = '';
+							try {
+								reply_to_msg_id = this.getNodeParameter('reply_to_msg_id', 0, '') as string;
+								outputItem.reply_to_msg_id = reply_to_msg_id;
+							} catch (error) {
+								// Reply ID is optional, ignore errors
+							}
+
+							// Check file existence
+							try {
+								const fs = require('fs');
+								if (!fs.existsSync(audioFilePath)) {
+									outputItem.error = `Audio file not found at path: ${audioFilePath}`;
+									processError = true;
+								} else {
+									// Get file size and stats for debugging
+									const stats = fs.statSync(audioFilePath);
+									outputItem.fileSize = stats.size;
+									outputItem.fileExists = true;
+
+									// Check file format for voice messages
+									if (sendAsVoice) {
+										const fileExtension = audioFilePath.split('.').pop()?.toLowerCase();
+										outputItem.fileExtension = fileExtension;
+
+										// Telegram voice messages typically work best with .ogg format
+										if (fileExtension !== 'ogg') {
+											outputItem.warning = 'Voice messages work best with .ogg format. Your file is in .' + fileExtension + ' format. Consider converting to .ogg for better compatibility.';
+											debug('Warning: Voice message format may not be optimal:', fileExtension);
+										}
+
+										// Check file size (Telegram has limits)
+										const maxSize = 20 * 1024 * 1024; // 20MB limit
+										if (stats.size > maxSize) {
+											outputItem.error = `File size (${Math.round(stats.size / 1024 / 1024)}MB) exceeds Telegram's limit of 20MB for voice messages`;
+											processError = true;
+										}
+									}
+								}
+							} catch (fsError) {
+								outputItem.error = `File system error: ${fsError.message}`;
+								processError = true;
+							}
+						}
+
+						// Send the message if no errors occurred
+						if (!processError) {
+							try {
+								// Construct the appropriate input message content based on type
+								let inputMessageContent;
+
+								if (sendAsVoice) {
+									// Send as voice message with waveform
+									inputMessageContent = {
+										_: 'inputMessageVoiceNote',
+										voice_note: {
+											_: 'inputFileLocal',
+											path: audioFilePath,
+										},
+										caption: {
+											_: 'formattedText',
+											text: outputItem.audioCaption,
+										},
+									};
+								} else {
+									// Send as regular audio file (music)
+									inputMessageContent = {
+										_: 'inputMessageAudio',
+										audio: {
+											_: 'inputFileLocal',
+											path: audioFilePath,
+										},
+										caption: {
+											_: 'formattedText',
+											text: outputItem.audioCaption,
+										},
+									};
+								}
+
+								const result = await client.invoke({
+									_: 'sendMessage',
+									chat_id,
+									reply_to_msg_id: outputItem.reply_to_msg_id,
+									input_message_content: inputMessageContent,
+								});
+
+								// Update output with success
+								outputItem.success = true;
+								outputItem.result = result;
+							} catch (apiError) {
+								// Enhanced error handling with more details
+								outputItem.errorDetails = {
+									message: apiError.message,
+									code: apiError.code,
+									stack: apiError.stack,
+									chat_id: chat_id,
+									sendAsVoice: sendAsVoice,
+									filePath: audioFilePath,
+									fileSize: outputItem.fileSize
+								};
+
+								// Log detailed error information
+								debug('Telegram API error details:', JSON.stringify(outputItem.errorDetails, null, 2));
+
+								if (apiError.message.includes('User restricted receiving of video messages')) {
+									outputItem.error = 'The recipient has restricted receiving of voice messages. Please try sending as a regular audio file instead.';
+									outputItem.errorType = 'USER_RESTRICTION';
+								} else if (apiError.message.includes('FILE_REFERENCE_EXPIRED')) {
+									outputItem.error = 'File reference has expired. Please try again.';
+									outputItem.errorType = 'FILE_REFERENCE_EXPIRED';
+								} else if (apiError.message.includes('FILE_ID_INVALID')) {
+									outputItem.error = 'Invalid file ID. Please check the file and try again.';
+									outputItem.errorType = 'FILE_ID_INVALID';
+								} else if (apiError.message.includes('CHAT_WRITE_FORBIDDEN')) {
+									outputItem.error = 'Cannot send messages to this chat. You may not have permission.';
+									outputItem.errorType = 'CHAT_WRITE_FORBIDDEN';
+								} else {
+									outputItem.error = `Telegram API error: ${apiError.message}`;
+									outputItem.errorType = 'UNKNOWN_ERROR';
+								}
+							}
+						}
+					} catch (generalError) {
+						// Catch any other unexpected errors
+						outputItem.error = `General error: ${generalError.message}`;
+					}
+
+					// Always add the output item to returnData
+					returnData.push(outputItem);
+				} else if (operation === 'sendMessageFile') {
+					const chat_id = this.getNodeParameter('chat_id', 0) as string;
+					const filePath = this.getNodeParameter('filePath', 0) as string;
+					let fileCaption: string | null = this.getNodeParameter('fileCaption', 0) as string;
+					const reply_to_msg_id = this.getNodeParameter('reply_to_msg_id', 0) as string;
+
+					if (fileCaption === '' && fileCaption.length == 0) {
+						fileCaption = null;
+					}
+					const result = await client.invoke({
+						_: 'sendMessage',
+						chat_id,
+						reply_to_msg_id,
+						input_message_content: {
+							_: 'inputMessageDocument',
+							document: {
+								_: 'inputFileLocal',
+								path: filePath,
+							},
+							caption: {
+								_: 'formattedText',
+								text: fileCaption,
+							},
+						},
+					});
+					returnData.push(result);
+				} else if (operation === 'sendMessagePhoto') {
+					const chat_id = this.getNodeParameter('chat_id', 0) as string;
+					const localFilePath = this.getNodeParameter('localFilePath', 0) as string;
+					let photoCaption: string | null = this.getNodeParameter('photoCaption', 0) as string;
+					const reply_to_msg_id = this.getNodeParameter('reply_to_msg_id', 0) as string;
+
+					if (photoCaption === '' && photoCaption.length == 0) {
+						photoCaption = null;
+					}
+					const result = await client.invoke({
+						_: 'sendMessage',
+						chat_id,
+						reply_to_msg_id,
+						input_message_content: {
+							_: 'inputMessagePhoto',
+							photo: {
+								_: 'inputFileLocal',
+								path: localFilePath,
+							},
+							caption: {
+								_: 'formattedText',
+								text: photoCaption,
+							},
+						},
+					});
+					returnData.push(result);
+				} else if (operation === 'addChatMembers') {
+					const chat_id = this.getNodeParameter('chat_id', 0) as string;
+					const user_ids = this.getNodeParameter('user_ids', 0) as string;
+
+					const idsArray = user_ids
+						.toString()
+						.split(',')
+						.map((s) => s.toString().trim());
+					const result = await client.invoke({
+						_: 'addChatMembers',
+						chat_id,
+						user_ids: idsArray,
+					});
+					returnData.push(result);
 				}
 			} else if (resource === 'group') {
 				if (operation === 'getSupergroup') {
