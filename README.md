@@ -63,6 +63,9 @@ For a hassle-free experience, take one of these templates for self-hosting:
     Stay informed and engaged with the conversations that matter to you.
 	- Moderating groups
   - Schedule message posting: you can schedule messages using your Telegram CoPilot
+  - Extract Channel Members: Extract members from a specific channel.
+  - Extract Group Members: Extract members from a specific group.
+  - Force Entry into Channel: Forcefully join a specific channel.
 - Get more API events: Telepilot can receive API events that normal bots don't know about, such as when a message gets deleted through the client.
 
 
